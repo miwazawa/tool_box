@@ -13,9 +13,9 @@ def show1(img):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
     
-def show2(img,img1):
-    cv2.imshow("img",img)
+def show2(img1,img2):
     cv2.imshow("img1",img1)
+    cv2.imshow("img2",img2)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
@@ -24,6 +24,10 @@ def resize(img, percent=0.2):
     width  = img.shape[1]
     img_resize = cv2.resize(img , (int(width*percent), int(height*percent)))
     return img_resize
+
+def save(path, img):
+    cv2.imwrite(path, img)
+    return
     
 #ディレクトリ内のファイル全てを読み込む関数
 def load_file(folder, fmt="png"):
@@ -537,3 +541,51 @@ def change_extension(path, ref_extension="bmp", tgt_extension="png"):
     for i,f in enumerate(files):
         print("{0}/{1}".format(i+1,len(files)))
         shutil.move(f, f.with_name(f.stem + "." + tgt_extension))
+
+#OpenCV → Pillow
+def cv2pil(image):
+    ''' OpenCV型 -> PIL型 '''
+    new_image = image.copy()
+    if new_image.ndim == 2:  # モノクロ
+        pass
+    elif new_image.shape[2] == 3:  # カラー
+        new_image = cv2.cvtColor(new_image, cv2.COLOR_BGR2RGB)
+    elif new_image.shape[2] == 4:  # 透過
+        new_image = cv2.cvtColor(new_image, cv2.COLOR_BGRA2RGBA)
+    new_image = Image.fromarray(new_image)
+    return new_image
+
+#Pillow → OpenCV
+def pil2cv(image):
+    ''' PIL型 -> OpenCV型 '''
+    new_image = np.array(image, dtype=np.uint8)
+    if new_image.ndim == 2:  # モノクロ
+        pass
+    elif new_image.shape[2] == 3:  # カラー
+        new_image = cv2.cvtColor(new_image, cv2.COLOR_RGB2BGR)
+    elif new_image.shape[2] == 4:  # 透過
+        new_image = cv2.cvtColor(new_image, cv2.COLOR_RGBA2BGRA)
+    return new_image
+
+#ndarrayを回転させる関数
+def rotate_img(img,angle):
+    pil_img = cv2pil(img)
+    kurukuru_pil_img = pil_img.rotate(angle)
+    rotated_img = pil2cv(kurukuru_pil_img)
+    return rotated_img
+
+def shift_x(image, shift):
+    h, w = image.shape[:2]
+    src = np.array([[0.0, 0.0],[0.0, 1.0],[1.0, 0.0]], np.float32)
+    dest = src.copy()
+    dest[:,0] += shift # シフトするピクセル値
+    affine = cv2.getAffineTransform(src, dest)
+    return cv2.warpAffine(image, affine, (w, h))
+
+def shift_y(image, shift):
+    h, w = image.shape[:2]
+    src = np.array([[0.0, 0.0],[0.0, 1.0],[1.0, 0.0]], np.float32)
+    dest = src.copy()
+    dest[:,1] += shift # シフトするピクセル値
+    affine = cv2.getAffineTransform(src, dest)
+    return cv2.warpAffine(image, affine, (w, h))
