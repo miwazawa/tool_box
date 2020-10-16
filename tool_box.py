@@ -589,3 +589,33 @@ def shift_y(image, shift):
     dest[:,1] += shift # シフトするピクセル値
     affine = cv2.getAffineTransform(src, dest)
     return cv2.warpAffine(image, affine, (w, h))
+
+#画像をwidth×heightに分割して一番特徴点数の多かったトリミング箇所と座標を返す関数
+def get_kp_in_rect(img, width, height):
+    x, y = 0, 0
+    good_x, good_y = 0, 0
+    max_kp_num = 0
+    
+    # AKAZE作成
+    akaze = cv2.AKAZE_create()
+    
+    if y+height >= img.shape[0] or x+width >= img.shape[1]:      
+        return print("Error : widthまたはheightが大きすぎます。")
+    while y+height < img.shape[0]:
+        while x+width < img.shape[1]:      
+            cropped = crop_image(img, x, y, width, height)
+            kp = akaze.detectAndCompute(cropped, None)[0]
+            if len(kp)>max_kp_num:
+                max_kp_num = len(kp)
+                good_x = x
+                good_y = y
+            x += width
+        y += height
+        x = 0
+    cropped = crop_image(img, good_x, good_y, width, height)   
+    return cropped, good_x, good_y
+
+#切り出し関数
+def crop_image(img, x, y, width, height):
+    cropped = img[y:height+y, x:width+x]
+    return cropped
