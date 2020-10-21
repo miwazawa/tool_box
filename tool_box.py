@@ -24,10 +24,6 @@ def resize(img, percent=0.2):
     width  = img.shape[1]
     img_resize = cv2.resize(img , (int(width*percent), int(height*percent)))
     return img_resize
-
-def save(path, img):
-    cv2.imwrite(path, img)
-    return
     
 #ディレクトリ内のファイル全てを読み込む関数
 def load_file(folder, fmt="png"):
@@ -619,3 +615,32 @@ def get_kp_in_rect(img, width, height):
 def crop_image(img, x, y, width, height):
     cropped = img[y:height+y, x:width+x]
     return cropped
+
+#パラボラフィッティングによるサブピクセル推定を行う関数
+def get_subPixel_using_parabola_fiting(match_result):
+    #最も一致率の高い座標を取得(minMaxLocの返り値を渡すのもありだったよね)
+    match_index = np.unravel_index(np.argmax(match_result), match_result.shape)
+    
+    #最も一致率の高い座標の前後(x座標)のピクセルの一致率を取得
+    R_back, R_center, R_front = match_result[match_index[0], match_index[1]-1] , \
+                                match_result[match_index[0], match_index[1]] , \
+                                match_result[match_index[0], match_index[1]+1]
+    #サブピクセルの計算
+    sub_pixel = (R_back - R_front) /  (2*R_back - 4*R_center + 2*R_front)
+    #print(R_back, R_center, R_front)
+    return sub_pixel
+
+#テンプレートマッチ箇所を四角で囲む関数
+def surround_matchpoint_rect(ref_img, tgt_img, save_dir):
+    #ターゲット画像に対してトリミング画像を用いて、テンプレートマッチング
+    match_result = cv2.matchTemplate(ref_img, tgt_img, cv2.TM_CCOEFF_NORMED)
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(match_result)
+
+    #検出領域を四角で囲んで保存
+    w, h = tgt_img.shape[::-1]
+    result = ref_img.copy()
+    result = cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
+    top_left = max_loc
+    bottom_right = (top_left[0] + w, top_left[1] + h)
+    cv2.rectangle(result,top_left, bottom_right, (0,0,255), 3)
+    cv2.imwrite(save_dir, result)
