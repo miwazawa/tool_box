@@ -7,6 +7,7 @@ import os
 import glob
 import pathlib
 import shutil
+import time
 
 def show1(img):
     cv2.imshow("img",img)
@@ -634,7 +635,7 @@ def get_subPixel_using_parabola_fiting(match_result):
 def surround_matchpoint_rect(ref_img, tgt_img, save_dir):
     #ターゲット画像に対してトリミング画像を用いて、テンプレートマッチング
     match_result = cv2.matchTemplate(ref_img, tgt_img, cv2.TM_CCOEFF_NORMED)
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(match_result)
+    max_loc = cv2.minMaxLoc(match_result)[3]
 
     #検出領域を四角で囲んで保存
     w, h = tgt_img.shape[::-1]
@@ -644,3 +645,94 @@ def surround_matchpoint_rect(ref_img, tgt_img, save_dir):
     bottom_right = (top_left[0] + w, top_left[1] + h)
     cv2.rectangle(result,top_left, bottom_right, (0,0,255), 3)
     cv2.imwrite(save_dir, result)
+
+#位相限定相関法
+def phase_only_correlation(img_ref, img_tgt):
+    
+    # Numpy配列に変換
+    im_gray_ref = np.asarray(cv2.cvtColor(img_ref, cv2.COLOR_BGR2GRAY), 'float')
+    im_gray_tgt = np.asarray(cv2.cvtColor(img_tgt, cv2.COLOR_BGR2GRAY), 'float')
+    
+    # 位相限定相関法
+    (x, y), e = cv2.phaseCorrelate(im_gray_ref, im_gray_tgt)
+        
+    return x, y
+
+#回転を考慮した位相限定相関法
+def phase_only_correlation_advanced(img_ref, img_tgt):
+
+    # Numpy配列に変換
+    im_gray_ref = np.array(img_ref,dtype=np.float64)#np.asarray(cv2.cvtColor(img_ref, cv2.COLOR_BGR2GRAY), 'float')
+    im_gray_tgt = np.array(img_tgt,dtype=np.float64)#np.asarray(cv2.cvtColor(img_tgt, cv2.COLOR_BGR2GRAY), 'float')
+    
+    # 画像サイズ
+    height, width = im_gray_ref.shape
+    center = (width/2, height/2)
+    
+    # Hunning窓設定
+    hunning_y = np.hanning(height)
+    hunning_x = np.hanning(width)
+    hunning_w = hunning_y.reshape(height, 1)*hunning_x
+    
+    # 高速フーリエ変換
+    im_fft_ref = np.fft.fftshift(np.log(np.abs(np.fft.fft2(im_gray_ref*hunning_w))))
+    im_fft_tgt = np.fft.fftshift(np.log(np.abs(np.fft.fft2(im_gray_tgt*hunning_w))))
+    
+    # 対数極座標変換 (lanczos法補間)
+    l = np.sqrt(width*width + height*height)
+    m = l/np.log(l)
+    flags = cv2.INTER_LANCZOS4 + cv2.WARP_POLAR_LOG
+    im_pol_ref = cv2.warpPolar(im_fft_ref, (width, height), center, m, flags)
+    im_pol_tgt = cv2.warpPolar(im_fft_tgt, (width, height), center, m, flags)
+    
+    # 位相限定相関法
+    (x, y), e = cv2.phaseCorrelate(im_pol_ref, im_pol_tgt, hunning_w)
+    
+    # 2次元回転アフィン行列
+    angle = y*360/height
+    scale = (np.e)**(x/m)
+    M = cv2.getRotationMatrix2D(center, angle, scale)
+    
+    # アフィン変換
+    im_aff_tgt = cv2.warpAffine((im_gray_tgt), M, (width, height))
+    
+    # 位相限定相関法
+    (x, y), e = cv2.phaseCorrelate(im_gray_ref, im_aff_tgt)
+    
+    #位相限定相関法の返り値から画像を生成
+    h, w = img_tgt.shape[:2]
+    M = cv2.getRotationMatrix2D((w/2,h/2), angle, scale)
+    M[0][2] -= x
+    M[1][2] -= y
+    dst = cv2.warpAffine(img_tgt, M, (w, h))
+    
+    return x, y, angle, scale, dst
+
+#3つのメソッドで位置合わせ画像を生成する関数
+def align_image(ref_img, tgt_img, mask_img=None, save_dir="./", POC=False, RIPOC=False, ECC=False):
+    if mask_img is not None:
+        ref_img = cv2.bitwise_and(ref_img, mask_img)
+        tgt_img = cv2.bitwise_and(tgt_img, mask_img)
+        
+    if POC:
+        start = time.time()
+        x,y = phase_only_correlation(ref_img, tgt_img)
+        temp = shift_x(tgt_img, -x)
+        temp = shift_y(temp, -y)
+        elapsed_time = time.time() - start
+        print ("POC elapsed_time:{0}".format(elapsed_time) + "[sec]")
+        cv2.imwrite(save_dir + "/aligned_image_POC.png", temp)
+        
+    if RIPOC:
+        start = time.time()
+        x, y, angle, scale, temp = phase_only_correlation_advanced(ref_img, tgt_img)
+        elapsed_time = time.time() - start
+        print ("RIPOC elapsed_time:{0}".format(elapsed_time) + "[sec]")
+        cv2.imwrite(save_dir + "/aligned_image_RIPOC.png", temp)
+        
+    if ECC:
+        start = time.time()
+        temp = align(ref_img, tgt_img, warp_mode = cv2.MOTION_HOMOGRAPHY)
+        elapsed_time = time.time() - start
+        print ("ECC elapsed_time:{0}".format(elapsed_time) + "[sec]")
+        cv2.imwrite(save_dir + "/aligned_image_ECC.png", temp)
