@@ -64,7 +64,7 @@ def devide_image(img, width, trimming_point,bias=0):
     return left_img, right_im
 
 #transformECCによる位置合わせ関数
-def align(base_img, target_img, warp_mode=cv2.MOTION_TRANSLATION, number_of_iterations=5000, termination_eps=1e-10):
+def align(base_img, target_img, warp_mode=cv2.MOTION_TRANSLATION, number_of_iterations=100, termination_eps=1e-10):
     #base_gray = cv2.cvtColor(base_img, cv2.COLOR_BGR2GRAY)
     #target_gray = cv2.cvtColor(target_img, cv2.COLOR_BGR2GRAY)
     base_gray = base_img
@@ -709,6 +709,7 @@ def phase_only_correlation_advanced(img_ref, img_tgt):
     return x, y, angle, scale, dst
 
 #3つのメソッドで位置合わせ画像を生成する関数
+#tranformECCのイテレーション数はalignの方でいじってね
 def align_image(ref_img, tgt_img, mask_img=None, save_dir="./", POC=False, RIPOC=False, ECC=False):
     if mask_img is not None:
         ref_img = cv2.bitwise_and(ref_img, mask_img)
@@ -736,3 +737,36 @@ def align_image(ref_img, tgt_img, mask_img=None, save_dir="./", POC=False, RIPOC
         elapsed_time = time.time() - start
         print ("ECC elapsed_time:{0}".format(elapsed_time) + "[sec]")
         cv2.imwrite(save_dir + "/aligned_image_ECC.png", temp)
+
+#テンプレートマッチによる評価を行う関数
+def eval_alignment_acc(ref_img, tgt_img, save_dir, crop_size_width, crop_size_height):
+    #特徴点の多い箇所をトリミング
+    cropped_ref, pos_x, pos_y = get_kp_in_rect(ref_img, crop_size_width, crop_size_height)
+    cv2.imwrite(save_dir + "cropped.png", cropped_ref)
+    #ここでトリミング画像を手動で指定している
+    #cropped_ref = cv2.imread("./test_img/cropped.png", cv2.IMREAD_GRAYSCALE)
+
+    #オリジナル画像に対してテンプレートマッチング
+    match_result_ref = cv2.matchTemplate(ref_img, cropped_ref, cv2.TM_CCOEFF_NORMED)
+    min_val, max_val, min_loc, max_loc_ref = cv2.minMaxLoc(match_result_ref)
+
+    #検出領域を四角で囲んで保存
+    surround_matchpoint_rect(ref_img, cropped_ref, save_dir + "result_ref.png")
+
+    #ターゲット画像に対してトリミング画像を用いて、テンプレートマッチング
+    match_result_tgt = cv2.matchTemplate(tgt_img, cropped_ref, cv2.TM_CCOEFF_NORMED)
+    min_val, max_val, min_loc, max_loc_tgt = cv2.minMaxLoc(match_result_tgt)
+
+    #検出領域を四角で囲んで保存
+    surround_matchpoint_rect(tgt_img, cropped_ref, save_dir + "result_ECC.png")
+    
+    #サブピクセル推定
+    sub_pixel_ref = get_subPixel_using_parabola_fiting(match_result_ref)
+    sub_pixel_tgt = get_subPixel_using_parabola_fiting(match_result_tgt)
+    sub_pixel_loc_ref = (max_loc_ref[0], max_loc_ref[1] + sub_pixel_ref)
+    sub_pixel_loc_tgt = (max_loc_tgt[0], max_loc_tgt[1] + sub_pixel_tgt)
+
+    #ターゲット画像とのマッチ座標の差分をとることで評価する。（今回はユークリッド距離）
+    distance = np.sqrt((sub_pixel_loc_ref[0]-sub_pixel_loc_tgt[0])**2+(sub_pixel_loc_ref[1]-sub_pixel_loc_tgt[1])**2)
+
+    return distance
