@@ -25,6 +25,14 @@ def resize(img, percent=0.2):
     width  = img.shape[1]
     img_resize = cv2.resize(img , (int(width*percent), int(height*percent)))
     return img_resize
+
+#target_pathの任意形式の画像を全てグレースケールに変換する関数
+def all_file_to_gray(target_path, ext = "png"):
+
+    for f in Path(target_path).rglob('*.' + ext):
+        file = os.path.basename(f)
+        img = cv2.imread(target_path + file, cv2.IMREAD_GRAYSCALE)
+        cv2.imwrite(target_path + file, img)
     
 #ディレクトリ内のファイル全てを読み込む関数
 def load_file(folder, fmt="png"):
@@ -45,6 +53,12 @@ def load_file(folder, fmt="png"):
                 images.append(filename)
         print("{} is loaded.\n".format(folder))
         return images
+
+#指定した名前のファイルを削除する関数（e.g. './*.txt'）
+def remove_glob(pathname, recursive=True):
+    for p in glob.glob(pathname, recursive=recursive):
+        if os.path.isfile(p):
+            os.remove(p)
     
 #画像をリストで渡すと横向きに連結してくれる関数(サイズに要注意)
 def hconcat_resize_min(im_list, interpolation=cv2.INTER_CUBIC):
