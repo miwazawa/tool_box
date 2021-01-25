@@ -8,6 +8,7 @@ import glob
 import pathlib
 import shutil
 import time
+from PIL import Image
 
 def show1(img):
     cv2.imshow("img",img)
